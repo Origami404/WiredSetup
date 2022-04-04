@@ -1,0 +1,66 @@
+version: '3'
+services:
+  # 用于参考的 caddy-docker-proxy 配置
+  # caddy-docker-proxy:
+  #   image: lucaslorentz/caddy-docker-proxy:ci-alpine
+  #   ports:
+  #     - 80:80
+  #     - 443:443
+  #   environment:
+  #     - CADDY_INGRESS_NETWORKS=default
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - ./data:/data
+  #   restart: unless-stopped
+
+  mitmproxy-frontend:
+    build: ./mitm-build
+    restart: always
+    volumes:
+      - ./run.py:/run.py
+    # 跟 Caddy-docker-proxy 有关的配置
+    labels:
+      caddy: ak.origami404.top
+      caddy.reverse_proxy: "mitmproxy-frontend:8080"
+    environment:
+      - UPSTREAM=http://rsocks:10001
+    depends_on:
+      - rsocks
+
+  mitmproxy-backend:
+    build: ./mitm-build
+    restart: always
+    volumes:
+      - ./run.py:/run.py
+    # 跟 Caddy-docker-proxy 有关的配置
+    labels:
+      caddy: ak.origami404.top
+      caddy.handle_path: /api/*
+      caddy.handle_path.0_rewrite: /api /
+      caddy.handle_path.1_reverse_proxy: "mitmproxy-backend:8080"
+    environment:
+      - UPSTREAM=http://rsocks:10002
+    depends_on:
+      - rsocks
+
+  rsocks:
+    build: ./rsocks-build
+    restart: always
+    image: rsocks
+    volumes:
+      - ./conf.toml:/conf.toml
+    depends_on:
+      - easyconn
+
+  easyconn:
+    image: hagb/docker-easyconnect:cli
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - EC_VER=7.6.3
+    volumes:
+      - ./easyconn:/root/.easyconn
+
